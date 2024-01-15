@@ -1,0 +1,66 @@
+---
+title: "Data collection"
+format: html
+editor: visual
+---
+
+# Setup
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(igraph)
+library(RSiena)
+library(Matrix)
+```
+
+# PTA data
+```{r}
+pta <- read_csv(url('https://www.designoftradeagreements.org/media/filer_public/2a/c7/2ac78d7d-9a73-471f-9693-e2b4a45d2b62/desta_list_of_treaties_02_02_dyads.csv'))
+withdraw <- read_csv(url("https://www.designoftradeagreements.org/media/filer_public/0b/0c/0b0c56b0-00e7-4abc-af9e-15a88dfc9237/desta_dyadic_withdrawal_02_02.csv"), guess_max = 2000)
+```
+
+to edgelist
+```{r}
+country_list <- unique(c(pta$iso1, pta$iso2))
+
+graph_list <- map(min(pta$year):2023, function(y){
+  draw <- withdraw %>% 
+    filter(year <= y) %>% 
+    select(iso1, iso2, base_treaty)
+  
+  subset <- pta %>% 
+    filter(year <= y) %>% 
+    select(iso1, iso2, base_treaty)
+  
+  # disregard the edge, if any of the two parties withdrew from the treaty in the the given or a previous year
+  if(nrow(draw) > 0){
+    subset <- subset %>% 
+      rowwise() %>% 
+      filter(max((draw$iso1 == iso1 | draw$iso2 == iso1) + 
+                   (draw$iso1 == iso2 | draw$iso2 == iso2) + 
+                   (draw$base_treaty == base_treaty)) < 3 | (nrow(draw) == 0)) %>% 
+      ungroup()
+  }
+  
+  graph <- subset %>% 
+    select(iso1, iso2) %>%
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify() %>% 
+    igraph::get.adjacency(sparse = T, type='both') %>%
+    as(., 'TsparseMatrix')
+  
+  return(graph)
+}, .progress = TRUE) 
+
+networks <- sienaDependent(graph_list, allowOnly = FALSE, sparse = T)
+
+
+```
+
+
+# to do  
+remove connections when getting out of treaty
+section 4.3.3 for countries which come and go
+consider what type of treaties we're looking at
