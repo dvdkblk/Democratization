@@ -20,6 +20,43 @@ pta <- read_csv(url('https://www.designoftradeagreements.org/media/filer_public/
 withdraw <- read_csv(url("https://www.designoftradeagreements.org/media/filer_public/0b/0c/0b0c56b0-00e7-4abc-af9e-15a88dfc9237/desta_dyadic_withdrawal_02_02.csv"), guess_max = 2000)
 ```
 
+# correlates of war 
+```{r}
+states <- read_csv(url("https://correlatesofwar.org/wp-content/uploads/system2016.csv")) %>% 
+  filter(year > 1945) %>% 
+  filter(!is.na(ccode)) %>% 
+  mutate(iso_code = countrycode::countrycode(ccode, "cown", "iso3n")) %>% 
+  mutate(iso_code = case_when(#correct for Germany
+                              ccode == 260 ~ 276, 
+                              ccode == 265 ~ 278,
+                              # Czechoslovakia
+                              ccode == 315 ~ 200,
+                              # Yugoslavia
+                              ccode == 345 ~ 891, 
+                              # Kosovo
+                              ccode == 347 ~ 900, 
+                              # Yemen
+                              ccode == 678 ~ 887, 
+                              # Yemen
+                              ccode == 680 ~ 887, 
+                              # South Vietnam
+                              ccode == 817 ~ 704,
+                              .default = iso_code )) %>% 
+  # correct dates of Yugoslavia
+  filter(!(iso_code == 891 & year > 1992) | is.na(iso_code))
+
+  # no code for Zanzibar (511)
+#! Some values were not matched unambiguously:  260, 265, 315, 345, 347, 511, 678, 680, 817
+
+missing_years <- map_dfr(2017:2023, function(y) {
+  states %>% filter(year == 2016) %>% mutate(year = y)
+  })
+
+states <- bind_rows(states, missing_years)  
+save(states, file = "data/states.Rdata")
+```
+
+
 to edgelist
 ```{r}
 country_list <- unique(c(pta$iso1, pta$iso2))
@@ -51,16 +88,53 @@ graph_list <- map(min(pta$year):2023, function(y){
     igraph::get.adjacency(sparse = T, type='both') %>%
     as(., 'TsparseMatrix')
   
+  # set structural zeros
+  graph[!rownames(graph) %in% states$iso_code[states$year == y],] <- 10
+  graph[,!colnames(graph) %in% states$iso_code[states$year == y]] <- 10
+  diag(graph) <- 0
+  
   return(graph)
 }, .progress = TRUE) 
 
 networks <- sienaDependent(graph_list, allowOnly = FALSE, sparse = T)
 
 
+draw <- withdraw %>% 
+    filter(year <= 2022) %>% 
+    select(iso1, iso2, base_treaty)
+  
+  subset <- pta %>% 
+    filter(year <= 2022) %>% 
+    select(iso1, iso2, base_treaty)
+  
+  # disregard the edge, if any of the two parties withdrew from the treaty in the the given or a previous year
+  if(nrow(draw) > 0){
+    subset <- subset %>% 
+      rowwise() %>% 
+      filter(max((draw$iso1 == iso1 | draw$iso2 == iso1) + 
+                   (draw$iso1 == iso2 | draw$iso2 == iso2) + 
+                   (draw$base_treaty == base_treaty)) < 3 | (nrow(draw) == 0)) %>% 
+      ungroup()
+  }
+  
+  graph <- subset %>% 
+    select(iso1, iso2) %>%
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify()%>% 
+    igraph::get.adjacency(sparse = T, type='both') %>%
+    as(., 'TsparseMatrix')
+  
+  # code structural zeros 
+  subgraph <- graph[1:3, 1:3]
+  
+  graph[rownames(subgraph)]
+  
+  subgraph[rownames(subgraph) == 4,] <- 10
+  subgraph[,colnames(subgraph) == "4"] <- 10
+  diag(subgraph) <- 0
 ```
 
 
 # to do  
-remove connections when getting out of treaty
-section 4.3.3 for countries which come and go
 consider what type of treaties we're looking at
