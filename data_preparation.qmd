@@ -256,22 +256,19 @@ gdp_inv_dep <- gdp_inv %>% varCovar()
 ## Trade
 ```{r}
 
-map(1948:2021, function(y){
+trade_list <- map(1948:2021, function(y){
   
   subset <- trade %>% 
     filter(year == y) %>% 
-    select(id1, id2, tradeflow_comtrade_o)
+    select(id1, id2, tradeflow_comtrade_o) %>% 
+    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0))
   
   graph <- subset %>% 
-    graph_from_data_frame(directed = F, vertices = country_list) %>%
-    # to avoid multiple connections between countries
-    simplify() %>% 
-    igraph::get.adjacency(sparse = T, type='both') %>%
+    graph_from_data_frame(vertices = country_list) %>% 
+    simplify(edge.attr.comb = 'max') %>% 
+    get.adjacency(attr = "tradeflow_comtrade_o") %>% 
     as(., 'TsparseMatrix')
   
-  # set structural zeros
-  graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
-  graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
   diag(graph) <- 0
   
   return(graph)
