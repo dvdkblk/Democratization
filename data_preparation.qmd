@@ -20,7 +20,7 @@ library(countrycode)
 
 ## Democracy
 ```{r}
-dem <- vdem %>% filter(year > 1945)
+dem <- vdem %>% filter(year >= 1948)
 
 dem <- dem %>% 
   select(country_name:year, v2x_polyarchy, COWcode)
@@ -30,7 +30,7 @@ dem <- dem %>%
 pta <- read_csv(url('https://www.designoftradeagreements.org/media/filer_public/2a/c7/2ac78d7d-9a73-471f-9693-e2b4a45d2b62/desta_list_of_treaties_02_02_dyads.csv')) %>% 
   mutate(id1 = countrycode(iso1, "iso3n", "vdem"), 
          id2 = countrycode(iso2, "iso3n", "vdem")) %>% 
-  filter(!is.na(id1), !is.na(id2))
+  filter(!is.na(id1), !is.na(id2)) 
 
 
 withdraw <- read_csv(url("https://www.designoftradeagreements.org/media/filer_public/0b/0c/0b0c56b0-00e7-4abc-af9e-15a88dfc9237/desta_dyadic_withdrawal_02_02.csv"), guess_max = 2000)%>% 
@@ -86,8 +86,36 @@ ally <- read_csv("data/version4.1_csv/alliance_v4.1_by_dyad_yearly.csv") %>%
   mutate(id1 = countrycode(ccode1, "cown", "vdem"), 
          id2 = countrycode(ccode2, "cown", "vdem")) %>% 
   filter(!is.na(id1), !is.na(id2), 
-         year > 1945)
+         year >= 1948)
 ```
+
+## Distance
+```{r}
+dist <- download.file("http://www.cepii.fr/DATA_DOWNLOAD/gravity/data/Gravity_rds_V202211.zip", destfile = "data/dist.zip")
+unzip("data/dist.zip", exdir = "data/dist")
+dist <- readRDS("data/dist/Gravity_V202211.rds")
+
+dist <- dist %>% 
+  mutate(id1 = countrycode(iso3num_o, "iso3n","vdem"), .after = iso3num_o) %>% 
+  mutate(id2 = countrycode(iso3num_d, "iso3n","vdem"), .after = iso3num_d) %>% 
+  filter(id1 %in% country_list, id2 %in% country_list) 
+```
+
+
+## GDP
+```{r}
+gdp <- dist %>% 
+  select(id1, gdp = gdp_o, year) %>% 
+  distinct()
+```
+
+
+## Trade
+```{r}
+trade <- dist %>% 
+  select(year, id1, id2, tradeflow_comtrade_o, tradeflow_imf_o)
+```
+
 
 #Data preparation 
 
@@ -179,20 +207,104 @@ dem_dep <- dem %>%
 
 ```
 
+## Distance
+```{r}
+
+recent_dist <- dist %>% 
+  filter(!is.na(distw_harmonic)) %>% 
+  mutate(pair_id = paste0(pmin(id1, id2), "_", pmax(id1, id2))) %>% 
+  filter(year == max(year), .by = pair_id)
+
+#missing countries 
+miss_cntr <- country_list[!country_list %in% recent_dist$id1]
+miss_cntr_df <- expand.grid(id1 = miss_cntr, id2 = miss_cntr)
+
+dist_m <- recent_dist %>% 
+  select(id1, id2, distw_harmonic) %>% 
+  full_join(miss_cntr_df) %>%
+  complete(id1, id2) %>% 
+  arrange(id1, id2) %>% 
+  pivot_wider(values_from = distw_harmonic, names_from = id2, values_fill = NA) %>% 
+  column_to_rownames("id1") %>% 
+  as.matrix()
+
+diag(dist_m) <- 0
+
+#divide by thousand kilometers to make sd small enough
+Distance <- coDyadCovar(dist_m/1000, sparse = F)
+```
+
+## GDP
+```{r}
+miss_cntr <- country_list[!country_list %in% gdp$id1]
+gdp_m <- gdp %>% 
+  filter(!is.na(gdp)) %>% 
+  bind_rows(tibble(id1 = miss_cntr)) %>% 
+  complete(id1, year) %>% 
+  filter(!is.na(year)) %>% 
+  pivot_wider(values_from = gdp, names_from = year) %>% 
+  column_to_rownames("id1") %>% 
+  as.matrix()
+
+# billions of dollars
+gdp_inv <- 1/(gdp_m/1000000)
+
+gdp_inv_dep <- gdp_inv %>% varCovar()
+
+```
+
+## Trade
+```{r}
+
+map(1948:2021, function(y){
+  
+  subset <- trade %>% 
+    filter(year == y) %>% 
+    select(id1, id2, tradeflow_comtrade_o)
+  
+  graph <- subset %>% 
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify() %>% 
+    igraph::get.adjacency(sparse = T, type='both') %>%
+    as(., 'TsparseMatrix')
+  
+  # set structural zeros
+  graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
+  graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+```
+
+
 ## Combine
 ```{r}
 df <- sienaDataCreate(networks, dem_dep)
 ```
 
 
+
+# Estimation
+
+## set effects
+```{r}
+eff <- getEffects(df)
+mod <- sienaAlgorithmCreate(projname = "test", modelType = c(), n3=1000)
+test <- siena07(mod, data = df, effects = eff)
+
+```
+
+
 # to do  
 consider what type of treaties we're looking at
 what types of alliances we consider
-countries which have never signed a pta
 which democracy index?
-RateX effect set for missing values (manual p.32f)
+what to do about the 8 countries that are not in gravity but in vdem?
+RateX effect set for missing values (manual p.32f), or not (zandberg 2018)
 missing datasets:
  - trade volumne
  - allies -> isn't that a new network in itself?
- - distance
- - democracy
+ - distance -> as time varrying?
