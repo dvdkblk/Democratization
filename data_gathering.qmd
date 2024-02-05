@@ -1,0 +1,96 @@
+---
+title: "Data gathering"
+format: html
+editor: source
+---
+
+
+# Setup
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(vdemdata)
+library(countrycode)
+```
+
+# Data gathering
+
+
+## Democracy
+```{r}
+dem <- vdem %>% 
+  select(country_name:year, v2x_polyarchy, COWcode)
+
+save(dem, file = "data/raw/dem_raw.Rdata")
+```
+## PTA data
+```{r}
+pta <- read_csv(url('https://www.designoftradeagreements.org/media/filer_public/2a/c7/2ac78d7d-9a73-471f-9693-e2b4a45d2b62/desta_list_of_treaties_02_02_dyads.csv')) %>% 
+  mutate(id1 = countrycode(iso1, "iso3n", "vdem"), 
+         id2 = countrycode(iso2, "iso3n", "vdem")) %>% 
+  filter(!is.na(id1), !is.na(id2)) 
+
+
+withdraw <- read_csv(url("https://www.designoftradeagreements.org/media/filer_public/0b/0c/0b0c56b0-00e7-4abc-af9e-15a88dfc9237/desta_dyadic_withdrawal_02_02.csv"), guess_max = 2000)%>% 
+  mutate(id1 = countrycode(iso1, "iso3n", "vdem"), 
+         id2 = countrycode(iso2, "iso3n", "vdem")) %>% 
+  filter(!is.na(id1), !is.na(id2))
+
+save(pta, file = "data/raw/pta_raw.Rdata")
+save(withdraw, file = "data/raw/withdraw_raw.Rdata")
+```
+
+
+## Alliances
+```{r}
+# ATOP
+download.file("http://www.atopdata.org/uploads/6/9/1/3/69134503/atop_5.1__.csv_.zip", destfile = "data/ally_atop.zip")
+unzip("data/ally_atop.zip", exdir = "data")
+
+ally <- read_csv("data/ATOP 5.1 (.csv)/atop5_1dy.csv") %>% 
+    mutate(id1 = countrycode(mem1, "cown", "vdem"),
+           id2 = countrycode(mem2, "cown", "vdem")) %>%
+    filter(!is.na(id1), !is.na(id2)) %>% 
+    select(year, id1, id2)
+
+save(ally, file = "data/raw/ally.Rdata")
+```
+
+## Distance
+```{r}
+dist <- download.file("http://www.cepii.fr/DATA_DOWNLOAD/gravity/data/Gravity_rds_V202211.zip", destfile = "data/dist.zip")
+unzip("data/dist.zip", exdir = "data/dist") 
+dist <- readRDS("data/dist/Gravity_V202211.rds")
+
+dist <- dist %>% 
+  mutate(id1 = countrycode(iso3num_o, "iso3n","vdem"), .after = iso3num_o) %>% 
+  mutate(id2 = countrycode(iso3num_d, "iso3n","vdem"), .after = iso3num_d) 
+
+save(dist, file = "data/raw/dist.Rdata")
+```
+
+
+## GDP
+```{r}
+gdp <- dist %>% 
+  select(id1, gdp = gdp_o, year) %>%  
+  distinct()
+save(gdp, file = "data/raw/gdp.Rdata")
+```
+
+
+## Trade
+```{r}
+trade <- dist %>% 
+  select(year, id1, id2, tradeflow_comtrade_o, tradeflow_imf_o)
+save(trade, file = "data/raw/trade.Rdata")
+```
+
+
+## clear space
+```{r}
+rm(dem, pta, withdraw, ally, dist, gdp, trade)
+gc()
+```
+
