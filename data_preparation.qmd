@@ -20,7 +20,7 @@ library(countrycode)
 
 ## Min/max year
 ```{r}
-min_year <- 1949
+min_year <- 2005
 max_year <- 2022
 ```
 
@@ -76,7 +76,7 @@ ally <- read_csv("data/ATOP 5.1 (.csv)/atop5_1dy.csv") %>%
 ## Distance
 ```{r}
 dist <- download.file("http://www.cepii.fr/DATA_DOWNLOAD/gravity/data/Gravity_rds_V202211.zip", destfile = "data/dist.zip")
-unzip("data/dist.zip", exdir = "data/dist")
+unzip("data/dist.zip", exdir = "data/dist") 
 dist <- readRDS("data/dist/Gravity_V202211.rds")
 
 dist <- dist %>% 
@@ -134,8 +134,10 @@ pta_list <- map(min_year:max_year, function(y){
     as(., 'TsparseMatrix')
   
   # set structural zeros
-  graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
-  graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  if(any(!rownames(graph) %in% dem$country_id[dem$year == y])){
+      graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
+        graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  }
   diag(graph) <- 0
   
   return(graph)
@@ -194,8 +196,8 @@ ally_list <- map(min_year:(max_year-1), function(y){
     as(., 'TsparseMatrix')
   
   # set structural zeros
-  graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
-  graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  #graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
+  #graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
   diag(graph) <- 0
   
   return(graph)
@@ -287,9 +289,22 @@ df <- sienaDataCreate(pta_depend, dem_depend, ally_covar, trade_covar, dist_cova
 
 ## set effects
 ```{r}
-# eff <- getEffects(df)
-# mod <- sienaAlgorithmCreate(projname = "test", modelType = c(), n3=1000)
-# test <- siena07(mod, data = df, effects = eff)
+eff <- getEffects(df)
+eff <- setEffect(eff, transTriads, include=FALSE)
+eff <- includeEffects(eff, nbrDist2)
+eff <- includeEffects(eff, X, interaction1="dist_covar")
+eff <- includeEffects(eff, X, interaction1="ally_covar")
+eff <- includeEffects(eff, altX, interaction1="dem_depend")
+eff <- includeEffects(eff, egoXaltX, interaction1="dem_depend")
+eff <- includeEffects(eff, altX, interaction1="gdp_covar")
+eff <- includeEffects(eff, egoXaltX, interaction1="gdp_covar")
+eff <- includeEffects(eff, X, interaction1="trade_covar")
+eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
+eff <- includeEffects(eff, name = "dem_depend", avAlt, outdeg, interaction1 = "pta_depend")
+eff <- setEffect(eff, name = "dem_depend", quad, include=TRUE)
+
+mod <- sienaAlgorithmCreate(projname = "Manger_05_2022", modelType = 3, n3=9000)
+test <- siena07(mod, data = df, effects = eff)
 
 ```
 
