@@ -12,11 +12,7 @@ library(readxl)
 library(igraph)
 library(RSiena)
 library(Matrix)
-library(vdemdata)
-library(countrycode)
 ```
-
-# Data gathering
 
 ## Min/max year
 ```{r}
@@ -25,86 +21,44 @@ max_year <- 2022
 ```
 
 
-## Democracy
-```{r}
-dem <- vdem %>% filter(year >= min_year)
-
-dem <- dem %>% 
-  select(country_name:year, v2x_polyarchy, COWcode)
-
-country_list <- sort(unique(dem$country_id))
-
-```
-## PTA data
-```{r}
-pta <- read_csv(url('https://www.designoftradeagreements.org/media/filer_public/2a/c7/2ac78d7d-9a73-471f-9693-e2b4a45d2b62/desta_list_of_treaties_02_02_dyads.csv')) %>% 
-  mutate(id1 = countrycode(iso1, "iso3n", "vdem"), 
-         id2 = countrycode(iso2, "iso3n", "vdem")) %>% 
-  filter(!is.na(id1), !is.na(id2)) 
-
-
-withdraw <- read_csv(url("https://www.designoftradeagreements.org/media/filer_public/0b/0c/0b0c56b0-00e7-4abc-af9e-15a88dfc9237/desta_dyadic_withdrawal_02_02.csv"), guess_max = 2000)%>% 
-  mutate(id1 = countrycode(iso1, "iso3n", "vdem"), 
-         id2 = countrycode(iso2, "iso3n", "vdem")) %>% 
-  filter(!is.na(id1), !is.na(id2))
-```
-
-
-## Alliances
-```{r}
-## correlates of war
-# download.file("https://correlatesofwar.org/wp-content/uploads/version4.1_csv.zip", destfile = "data/ally.zip")
-# unzip("data/ally.zip", exdir = "data")
-# #http://www.atopdata.org/additional-data.html?? geht immerhin bis 2018
-# ally <- read_csv("data/version4.1_csv/alliance_v4.1_by_dyad_yearly.csv") %>% 
-#   mutate(id1 = countrycode(ccode1, "cown", "vdem"), 
-#          id2 = countrycode(ccode2, "cown", "vdem")) %>% 
-#   filter(!is.na(id1), !is.na(id2), 
-#          year >= 1948)
-
-# ATOP
-download.file("http://www.atopdata.org/uploads/6/9/1/3/69134503/atop_5.1__.csv_.zip", destfile = "data/ally_atop.zip")
-unzip("data/ally_atop.zip", exdir = "data")
-
-ally <- read_csv("data/ATOP 5.1 (.csv)/atop5_1dy.csv") %>% 
-    mutate(id1 = countrycode(mem1, "cown", "vdem"),
-           id2 = countrycode(mem2, "cown", "vdem")) %>%
-    filter(!is.na(id1), !is.na(id2),
-           year >= min_year)
-```
-
-## Distance
-```{r}
-dist <- download.file("http://www.cepii.fr/DATA_DOWNLOAD/gravity/data/Gravity_rds_V202211.zip", destfile = "data/dist.zip")
-unzip("data/dist.zip", exdir = "data/dist") 
-dist <- readRDS("data/dist/Gravity_V202211.rds")
-
-dist <- dist %>% 
-  mutate(id1 = countrycode(iso3num_o, "iso3n","vdem"), .after = iso3num_o) %>% 
-  mutate(id2 = countrycode(iso3num_d, "iso3n","vdem"), .after = iso3num_d) %>% 
-  filter(id1 %in% country_list, id2 %in% country_list) 
-```
-
-
-## GDP
-```{r}
-gdp <- dist %>% 
-  select(id1, gdp = gdp_o, year) %>% 
-  distinct()
-```
-
-
-## Trade
-```{r}
-trade <- dist %>% 
-  select(year, id1, id2, tradeflow_comtrade_o, tradeflow_imf_o)
-```
-
 
 #Data preparation 
 
+
+
+## Democracy
+```{r}
+load(file = "data/raw/dem_raw.Rdata")
+
+dem <- dem %>% filter(year >= min_year, year <= max_year)
+
+country_list <- sort(unique(dem$country_id))
+
+
+dem <- dem %>% 
+  mutate(poly_ord = round(v2x_polyarchy, 1)*10)
+
+dem_depend <- dem %>% 
+  filter(year >= min_year) %>% 
+  arrange(country_id, year) %>% 
+  select(country_id, poly_ord, year) %>% 
+  pivot_wider(values_from = poly_ord, names_from = year) %>% 
+  column_to_rownames("country_id") %>% 
+  as.matrix() %>% 
+  sienaDependent(type = "behavior", sparse = F)
+  
+
+```
+
+
 ## pta network
 ```{r}
+
+
+load("data/raw/pta_raw.Rdata")
+load("data/raw/withdraw_raw.Rdata")
+
+pta <- pta %>% filter(id1 %in% country_list, id2 %in% country_list)
 
 pta_list <- map(min_year:max_year, function(y){
   draw <- withdraw %>% 
@@ -150,28 +104,14 @@ pta_depend <- sienaDependent(pta_list, allowOnly = FALSE, sparse = T)
 
 
 
-## Democracy
-```{r}
-dem <- dem %>% 
-  mutate(poly_ord = round(v2x_polyarchy, 1)*10)
-
-dem_depend <- dem %>% 
-  filter(year >= min_year) %>% 
-  arrange(country_id, year) %>% 
-  select(country_id, poly_ord, year) %>% 
-  pivot_wider(values_from = poly_ord, names_from = year) %>% 
-  column_to_rownames("country_id") %>% 
-  as.matrix() %>% 
-  sienaDependent(type = "behavior", sparse = F)
-  
-
-```
-
 ## Alliances
 ```{r}
+load("data/raw/ally.Rdata")
+
 ## Expand beyond 2018
 ally <- ally %>% 
-  select(year, id1, id2)
+  filter(year >= min_year) %>% 
+  filter(id1 %in% country_list, id2 %in% country_list)
 
 missing_years <- map_dfr(2019:2021, function(y) {
   ally %>% filter(year == 2018) %>% mutate(year = y)
@@ -208,6 +148,9 @@ ally_covar <- varDyadCovar(ally_list, warn = FALSE)
 
 ## Distance
 ```{r}
+load("data/raw/dist.Rdata")
+dist <- dist %>% 
+  filter(id1 %in% country_list, id2 %in% country_list) 
 
 recent_dist <- dist %>% 
   filter(!is.na(distw_harmonic)) %>% 
@@ -235,6 +178,10 @@ dist_covar <- coDyadCovar(dist_m/1000, sparse = F)
 
 ## GDP
 ```{r}
+load("data/raw/gdp.Rdata")
+gdp <- gdp %>% 
+  filter(year >= min_year, year < max_year, id1 %in% country_list, !is.na(gdp)) 
+
 miss_cntr <- country_list[!country_list %in% gdp$id1]
 
 gdp_m <- gdp %>% 
@@ -255,6 +202,9 @@ gdp_covar <- gdp_inv %>% varCovar()
 
 ## Trade
 ```{r}
+load("data/raw/trade.Rdata")
+trade <- trade %>% 
+  filter(id1 %in% country_list, id2 %in% country_list) 
 
 trade_list <- map(min_year:(max_year-1), function(y){
   
@@ -280,33 +230,13 @@ trade_covar <- varDyadCovar(trade_list, warn = F)
 
 ## Combine
 ```{r}
-df <- sienaDataCreate(pta_depend, dem_depend, ally_covar, trade_covar, dist_covar, gdp_covar)
-```
+siena_data <- sienaDataCreate(pta_depend, dem_depend, ally_covar, trade_covar, dist_covar, gdp_covar)
 
-
-
-# Estimation
-
-## set effects
-```{r}
-eff <- getEffects(df)
-eff <- setEffect(eff, transTriads, include=FALSE)
-eff <- includeEffects(eff, nbrDist2)
-eff <- includeEffects(eff, X, interaction1="dist_covar")
-eff <- includeEffects(eff, X, interaction1="ally_covar")
-eff <- includeEffects(eff, altX, interaction1="dem_depend")
-eff <- includeEffects(eff, egoXaltX, interaction1="dem_depend")
-eff <- includeEffects(eff, altX, interaction1="gdp_covar")
-eff <- includeEffects(eff, egoXaltX, interaction1="gdp_covar")
-eff <- includeEffects(eff, X, interaction1="trade_covar")
-eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
-eff <- includeEffects(eff, name = "dem_depend", avAlt, outdeg, interaction1 = "pta_depend")
-eff <- setEffect(eff, name = "dem_depend", quad, include=TRUE)
-
-mod <- sienaAlgorithmCreate(projname = "Manger_05_2022", modelType = 3, n3=9000)
-test <- siena07(mod, data = df, effects = eff)
+save(siena_data, file = "data/proc/siena_data.Rdata")
 
 ```
+
+
 
 
 # to do  

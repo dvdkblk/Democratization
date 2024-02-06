@@ -1,0 +1,34 @@
+---
+title: "Estimation"
+format: html
+---
+# Setup
+
+```{r setup}
+library(tidyverse)
+library(RSiena)
+```
+
+
+# Estimation
+
+## set effects
+```{r}
+eff <- getEffects(df)
+eff <- setEffect(eff, transTriads, include=FALSE)
+eff <- includeEffects(eff, nbrDist2)
+eff <- includeEffects(eff, X, interaction1="dist_covar")
+eff <- includeEffects(eff, X, interaction1="ally_covar")
+eff <- includeEffects(eff, altX, interaction1="dem_depend")
+eff <- includeEffects(eff, egoXaltX, interaction1="dem_depend")
+eff <- includeEffects(eff, altX, interaction1="gdp_covar")
+eff <- includeEffects(eff, egoXaltX, interaction1="gdp_covar")
+eff <- includeEffects(eff, X, interaction1="trade_covar")
+eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
+eff <- includeEffects(eff, name = "dem_depend", avAlt, outdeg, interaction1 = "pta_depend")
+eff <- setEffect(eff, name = "dem_depend", quad, include=TRUE)
+
+mod <- sienaAlgorithmCreate(projname = "Manger_05_2022", modelType = 3, n3=9000)
+test <- siena07(mod, data = df, effects = eff)
+
+```
