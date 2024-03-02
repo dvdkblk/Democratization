@@ -207,7 +207,6 @@ trade <- trade %>%
   filter(id1 %in% country_list, id2 %in% country_list) 
 
 trade_list <- map(min_year:(max_year-1), function(y){
-  
   subset <- trade %>% 
     filter(year == y) %>% 
     select(id1, id2, tradeflow_comtrade_o) %>% 
@@ -249,3 +248,6 @@ Questions:
  - allies -> isn't that a new network in itself? directed/not directed? nonaggression agreements?
  - distance -> as time varrying?
 - continuous vs ordinal democracy
+- log gdp? 
+- log trade!
+- deflate to stable dollars -> already done by datasource
