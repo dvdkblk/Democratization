@@ -7,28 +7,65 @@ format: html
 ```{r setup}
 library(tidyverse)
 library(RSiena)
+load("data/proc/siena_data.Rdata")
 ```
 
-
-# Estimation
-
-## set effects
+# Inspection
 ```{r}
-eff <- getEffects(df)
-eff <- setEffect(eff, transTriads, include=FALSE)
-eff <- includeEffects(eff, nbrDist2)
-eff <- includeEffects(eff, X, interaction1="dist_covar")
-eff <- includeEffects(eff, X, interaction1="ally_covar")
-eff <- includeEffects(eff, altX, interaction1="dem_depend")
-eff <- includeEffects(eff, egoXaltX, interaction1="dem_depend")
-eff <- includeEffects(eff, altX, interaction1="gdp_covar")
-eff <- includeEffects(eff, egoXaltX, interaction1="gdp_covar")
-eff <- includeEffects(eff, X, interaction1="trade_covar")
-eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
-eff <- includeEffects(eff, name = "dem_depend", avAlt, outdeg, interaction1 = "pta_depend")
-eff <- setEffect(eff, name = "dem_depend", quad, include=TRUE)
-
-mod <- sienaAlgorithmCreate(projname = "Manger_05_2022", modelType = 3, n3=9000)
-test <- siena07(mod, data = df, effects = eff)
-
+print01Report(siena_data)
 ```
+
+
+# Set effects
+
+## basic effects
+```{r}
+eff <- getEffects(siena_data)
+```
+
+## predicting democracy
+```{r}
+# average dem of alters, name for dependend variable
+eff <- includeEffects(eff, avAlt, name = "dem_depend", interaction1 = "pta_depend")
+eff <- includeEffects(eff, outdeg, name = "dem_depend", interaction1 = "pta_depend" )
+```
+
+## predicting PT
+```{r}
+# democracy ego 
+eff <- includeEffects(eff, egoX, interaction1 = "dem_depend", name = "pta_depend")
+# democracies with democracies 
+eff <- includeEffects(eff, egoXaltX, interaction1 = "dem_depend", name = "pta_depend")
+
+# gwesp
+eff <- includeEffects(eff, gwesp, name = "pta_depend")
+
+# popularity
+eff <- includeEffects(eff, inPopSqrt, name = "pta_depend")
+```
+
+## controll variables
+```{r}
+# trade volume
+eff <- includeEffects(eff, X, interaction1 = "trade_covar", name = "pta_depend")
+
+# gdp
+eff <- includeEffects(eff, altX, egoX,egoXaltX,  interaction1 = "gdp_covar", name = "pta_depend")
+eff <- includeEffects(eff, effFrom, interaction1 = "gdp_covar", name = "dem_depend")
+
+# interaction gdp trade
+eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
+
+# distance
+eff <- includeEffects(eff, X, interaction1 = "dist_covar", name = "pta_depend")
+
+# alliance
+eff <- includeEffects(eff, X, interaction1 = "dist_covar", name = "pta_depend")
+```
+# Estimate
+```{r}
+mod <- sienaAlgorithmCreate(projname = "first_algo", modelType = c(pta_depend=3))
+
+first <- siena07(mod, data = siena_data, effects = eff, useCluster = T)
+```
+
