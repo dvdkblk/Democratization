@@ -193,24 +193,34 @@ gdp_m <- gdp %>%
   column_to_rownames("id1") %>% 
   as.matrix()
 
+
 # billions of dollars
 gdp_inv <- 1/(gdp_m/1000000)
+# gdp
+gdp_bil <- (gdp_m/1000000000)
+# log 
+gdp_log <- log(gdp_m)
 
-gdp_covar <- gdp_inv %>% varCovar()
+
+gdp_inv <- gdp_inv %>% varCovar()
+
+
+gdp_bil <- gdp_bil %>% varCovar()
+
+gdp_log <- gdp_log%>% varCovar()
 
 ```
 
 ## Trade
 ```{r}
 load("data/raw/trade.Rdata")
-trade <- trade %>% 
-  filter(id1 %in% country_list, id2 %in% country_list) 
 
 trade_list <- map(min_year:(max_year-1), function(y){
   subset <- trade %>% 
     filter(year == y) %>% 
     select(id1, id2, tradeflow_comtrade_o) %>% 
-    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0))
+    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0), 
+           tradeflow_comtrade_o = pmax(log(tradeflow_comtrade_o), 0))
   
   graph <- subset %>% 
     graph_from_data_frame(vertices = country_list) %>% 
@@ -223,16 +233,38 @@ trade_list <- map(min_year:(max_year-1), function(y){
   return(graph)
 }, .progress = TRUE) 
 
-trade_covar <- varDyadCovar(trade_list, warn = F)
+trade_log <- varDyadCovar(trade_list, warn = F)
+
+
+trade_list <- map(min_year:(max_year-1), function(y){
+  subset <- trade %>% 
+    filter(year == y) %>% 
+    select(id1, id2, tradeflow_comtrade_o) %>% 
+    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0), 
+           tradeflow_comtrade_o = tradeflow_comtrade_o/1000000)
+  
+  graph <- subset %>% 
+    graph_from_data_frame(vertices = country_list) %>% 
+    simplify(edge.attr.comb = 'max') %>% 
+    get.adjacency(attr = "tradeflow_comtrade_o") %>% 
+    as(., 'TsparseMatrix')
+  
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+trade_mil <- varDyadCovar(trade_list, warn = F)
+
 ```
 
 
 ## Combine
 ```{r}
-siena_data <- sienaDataCreate(pta_depend, dem_depend, ally_covar, trade_covar, dist_covar, gdp_covar)
+siena_data <- sienaDataCreate(pta_depend, dem_depend, ally_covar, trade_log, trade_mil, dist_covar, gdp_inv, gdp_bil, gdp_log)
 
 save(siena_data, file = "data/proc/siena_data.Rdata")
-
+load( file = "data/proc/siena_data.Rdata")
 ```
 
 
