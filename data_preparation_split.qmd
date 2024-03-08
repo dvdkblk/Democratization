@@ -1,0 +1,303 @@
+---
+title: "Data collection"
+format: html
+editor: visual
+---
+
+# Setup
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(igraph)
+library(RSiena)
+library(Matrix)
+```
+
+## Min/max year
+```{r}
+min_year <- 2005
+mid_year <- 2014
+max_year <- 2022
+```
+
+
+
+#Data preparation 
+
+
+
+## Democracy
+```{r}
+load(file = "data/raw/dem_raw.Rdata")
+
+dem <- dem %>% filter(year >= min_year, year <= max_year)
+
+country_list <- sort(unique(dem$country_id))
+
+
+dem <- dem %>% 
+  mutate(poly_ord = round(v2x_polyarchy, 1)*10)
+
+dem_depend <- dem %>% 
+  filter(year >= min_year) %>% 
+  arrange(country_id, year) %>% 
+  select(country_id, poly_ord, year) %>% 
+  pivot_wider(values_from = poly_ord, names_from = year) %>% 
+  column_to_rownames("country_id") %>% 
+  as.matrix() 
+
+dem_depend1 <- dem_depend[,as.character(min_year:(mid_year-1))] %>% 
+                sienaDependent(type = "behavior", sparse = F)
+
+
+dem_depend2 <- dem_depend[,as.character(mid_year:max_year)] %>% 
+                sienaDependent(type = "behavior", sparse = F)
+```
+
+
+## pta network
+```{r}
+
+load("data/raw/pta_raw.Rdata")
+load("data/raw/withdraw_raw.Rdata")
+
+pta <- pta %>% filter(id1 %in% country_list, id2 %in% country_list)
+
+pta_list <- map(min_year:max_year, function(y){
+  draw <- withdraw %>% 
+    filter(year <= y) %>% 
+    select(id1, id2, base_treaty)
+  
+  subset <- pta %>% 
+    filter(year <= y) %>% 
+    select(id1, id2, base_treaty)
+  
+  # disregard the edge, if any of the two parties withdrew from the treaty in the the given or a previous year
+  if(nrow(draw) > 0){
+    subset <- subset %>% 
+      rowwise() %>% 
+      filter(max((draw$id1 == id1 | draw$id2 == id1) + 
+                   (draw$id1 == id2 | draw$id2 == id2) + 
+                   (draw$base_treaty == base_treaty)) < 3 | (nrow(draw) == 0)) %>% 
+      ungroup()
+  }
+  
+  graph <- subset %>% 
+    select(id1, id2) %>%
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify() %>% 
+    igraph::get.adjacency(sparse = T, type='both') %>%
+    as(., 'TsparseMatrix')
+  
+  # set structural zeros
+  if(any(!rownames(graph) %in% dem$country_id[dem$year == y])){
+      graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
+        graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  }
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+
+pta_depend1 <- sienaDependent(pta_list[1:9], allowOnly = FALSE, sparse = T)
+pta_depend2 <- sienaDependent(pta_list[10:18], allowOnly = FALSE, sparse = T)
+
+
+```
+
+
+
+## Alliances
+```{r}
+load("data/raw/ally.Rdata")
+
+## Expand beyond 2018
+ally <- ally %>% 
+  filter(year >= min_year) %>% 
+  filter(id1 %in% country_list, id2 %in% country_list)
+
+missing_years <- map_dfr(2019:2021, function(y) {
+  ally %>% filter(year == 2018) %>% mutate(year = y)
+  })
+
+ally_complete <- ally %>% bind_rows(missing_years)
+
+
+ally_list <- map(min_year:(max_year-1), function(y){
+
+  subset <- ally %>% 
+    filter(year <= y) %>% 
+    select(id1, id2)
+  
+  
+  graph <- subset %>% 
+    select(id1, id2) %>%
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify() %>% 
+    igraph::get.adjacency(sparse = T, type='both') %>%
+    as(., 'TsparseMatrix')
+  
+  # set structural zeros
+  #graph[!rownames(graph) %in% dem$country_id[dem$year == y],] <- 10
+  #graph[,!colnames(graph) %in% dem$country_id[dem$year == y]] <- 10
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+
+ally_covar1 <- varDyadCovar(ally_list[1:8], warn = FALSE)
+ally_covar2 <- varDyadCovar(ally_list[9:16], warn = FALSE)
+
+```
+
+## Distance
+```{r}
+load("data/raw/dist.Rdata")
+dist <- dist %>% 
+  filter(id1 %in% country_list, id2 %in% country_list) 
+
+recent_dist <- dist %>% 
+  filter(!is.na(distw_harmonic)) %>% 
+  mutate(pair_id = paste0(pmin(id1, id2), "_", pmax(id1, id2))) %>% 
+  filter(year == max(year), .by = pair_id)
+
+#missing countries 
+miss_cntr <- country_list[!country_list %in% recent_dist$id1]
+miss_cntr_df <- expand.grid(id1 = miss_cntr, id2 = miss_cntr)
+
+dist_m <- recent_dist %>% 
+  select(id1, id2, distw_harmonic) %>% 
+  full_join(miss_cntr_df) %>%
+  complete(id1, id2) %>% 
+  arrange(id1, id2) %>% 
+  pivot_wider(values_from = distw_harmonic, names_from = id2, values_fill = NA) %>% 
+  column_to_rownames("id1") %>% 
+  as.matrix()
+
+diag(dist_m) <- 0
+
+#divide by thousand kilometers to make sd small enough
+dist_covar <- coDyadCovar(dist_m/1000, sparse = F)
+```
+
+## GDP
+```{r}
+load("data/raw/gdp.Rdata")
+gdp <- gdp %>% 
+  filter(year >= min_year, year < max_year, id1 %in% country_list, !is.na(gdp)) 
+
+miss_cntr <- country_list[!country_list %in% gdp$id1]
+
+gdp_m <- gdp %>% 
+  filter(!is.na(gdp)) %>% 
+  bind_rows(tibble(id1 = miss_cntr)) %>% 
+  complete(id1, year) %>% 
+  filter(!is.na(year)) %>% 
+  pivot_wider(values_from = gdp, names_from = year) %>% 
+  column_to_rownames("id1") %>% 
+  as.matrix()
+
+# billions of dollars
+gdp_inv <- 1/(gdp_m/1000000)
+# gdp
+gdp_bil <- (gdp_m/1000000000)
+# log 
+gdp_log <- log(gdp_m)
+
+
+gdp_inv1 <- gdp_inv[,1:8] %>% varCovar()
+gdp_inv2<- gdp_inv[,9:16] %>% varCovar()
+
+
+gdp_bil1 <- gdp_bil[,1:8] %>% varCovar()
+gdp_bil2 <- gdp_bil[,9:16] %>% varCovar()
+
+gdp_log1 <- gdp_log[,1:8] %>% varCovar()
+gdp_log2 <- gdp_log[,9:16] %>% varCovar()
+
+```
+
+## Trade
+```{r}
+load("data/raw/trade.Rdata")
+trade <- trade %>% 
+  filter(id1 %in% country_list, id2 %in% country_list) 
+
+trade_list <- map(min_year:(max_year-1), function(y){
+  subset <- trade %>% 
+    filter(year == y) %>% 
+    select(id1, id2, tradeflow_comtrade_o) %>% 
+    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0), 
+           tradeflow_comtrade_o = pmax(log(tradeflow_comtrade_o), 0))
+  
+  graph <- subset %>% 
+    graph_from_data_frame(vertices = country_list) %>% 
+    simplify(edge.attr.comb = 'max') %>% 
+    get.adjacency(attr = "tradeflow_comtrade_o") %>% 
+    as(., 'TsparseMatrix')
+  
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+trade_log1 <- varDyadCovar(trade_list[1:8], warn = F)
+trade_log2 <- varDyadCovar(trade_list[9:16], warn = F)
+
+
+trade_list <- map(min_year:(max_year-1), function(y){
+  subset <- trade %>% 
+    filter(year == y) %>% 
+    select(id1, id2, tradeflow_comtrade_o) %>% 
+    mutate(tradeflow_comtrade_o = replace_na(tradeflow_comtrade_o, 0), 
+           tradeflow_comtrade_o = tradeflow_comtrade_o/1000000)
+  
+  graph <- subset %>% 
+    graph_from_data_frame(vertices = country_list) %>% 
+    simplify(edge.attr.comb = 'max') %>% 
+    get.adjacency(attr = "tradeflow_comtrade_o") %>% 
+    as(., 'TsparseMatrix')
+  
+  diag(graph) <- 0
+  
+  return(graph)
+}, .progress = TRUE) 
+
+trade_mil1 <- varDyadCovar(trade_list[1:8], warn = F)
+trade_mil2 <- varDyadCovar(trade_list[9:16], warn = F)
+
+
+```
+
+
+## Combine
+```{r}
+siena_data1 <- sienaDataCreate(pta_depend1, dem_depend1, ally_covar1, trade_log1, trade_mil1, dist_covar, gdp_inv1, gdp_bil1, gdp_log1)
+siena_data2 <- sienaDataCreate(pta_depend2, dem_depend2, ally_covar2, trade_log2, trade_mil2, dist_covar, gdp_inv2, gdp_bil2, gdp_log2)
+
+
+save(siena_data1, file = "data/proc/siena_data1.Rdata")
+save(siena_data2, file = "data/proc/siena_data2.Rdata")
+```
+
+
+
+
+# to do  
+consider what type of treaties we're looking at
+what types of alliances we consider
+which democracy index?
+what to do about the 8 countries that are not in gravity but in vdem?
+RateX effect set for missing values (manual p.32f), or not (zandberg 2018)
+Questions:
+ - allies -> isn't that a new network in itself? directed/not directed? nonaggression agreements?
+ - distance -> as time varrying?
+- continuous vs ordinal democracy
+- log gdp? 
+- log trade!
+- deflate to stable dollars -> already done by datasource
