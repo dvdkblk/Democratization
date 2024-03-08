@@ -151,7 +151,7 @@ ally_list <- map(min_year:(max_year-1), function(y){
 
 
 ally_covar1 <- varDyadCovar(ally_list[1:8], warn = FALSE)
-ally_covar2 <- varDyadCovar(ally_list[9:16], warn = FALSE)
+ally_covar2 <- varDyadCovar(ally_list[10:17], warn = FALSE)
 
 ```
 
@@ -211,14 +211,14 @@ gdp_log <- log(gdp_m)
 
 
 gdp_inv1 <- gdp_inv[,1:8] %>% varCovar()
-gdp_inv2<- gdp_inv[,9:16] %>% varCovar()
+gdp_inv2<- gdp_inv[,10:17] %>% varCovar()
 
 
 gdp_bil1 <- gdp_bil[,1:8] %>% varCovar()
-gdp_bil2 <- gdp_bil[,9:16] %>% varCovar()
+gdp_bil2 <- gdp_bil[,10:17] %>% varCovar()
 
 gdp_log1 <- gdp_log[,1:8] %>% varCovar()
-gdp_log2 <- gdp_log[,9:16] %>% varCovar()
+gdp_log2 <- gdp_log[,10:17] %>% varCovar()
 
 ```
 
@@ -247,7 +247,7 @@ trade_list <- map(min_year:(max_year-1), function(y){
 }, .progress = TRUE) 
 
 trade_log1 <- varDyadCovar(trade_list[1:8], warn = F)
-trade_log2 <- varDyadCovar(trade_list[9:16], warn = F)
+trade_log2 <- varDyadCovar(trade_list[10:17], warn = F)
 
 
 trade_list <- map(min_year:(max_year-1), function(y){
@@ -269,7 +269,7 @@ trade_list <- map(min_year:(max_year-1), function(y){
 }, .progress = TRUE) 
 
 trade_mil1 <- varDyadCovar(trade_list[1:8], warn = F)
-trade_mil2 <- varDyadCovar(trade_list[9:16], warn = F)
+trade_mil2 <- varDyadCovar(trade_list[10:17], warn = F)
 
 
 ```
