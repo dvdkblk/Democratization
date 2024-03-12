@@ -1,10 +1,11 @@
 split_estimation <- function(set = c("1", "2"), filename){
+    proc.time()
     library(methods)
     library(RPushbullet)
     library(RSiena)
     set <- as.character(set)
     load(sprintf("data/proc/siena_data%s.Rdata", set))
-    load(sprintf("results/set%s/almost_there.RData", set))
+    load(sprintf("results/set%s/sufficient_even_better.RData", set))
     source("functions.r")
     
     data <- get(sprintf("siena_data%s" , set))
@@ -17,8 +18,7 @@ split_estimation <- function(set = c("1", "2"), filename){
         # inPop
         eff <- includeEffects(eff, inPopSqrt, name = sprintf("pta_depend%s" , set))
         # democracy
-        eff <- includeEffects(eff, egoX, interaction1 = sprintf("dem_depend%s" , set), name = sprintf("pta_depend%s" , set))
-        if(set == "2"){eff <- includeEffects(eff,  egoXaltX, interaction1 = sprintf("dem_depend%s" , set), name = sprintf("pta_depend%s" , set))}
+        if(set == "2"){eff <- includeEffects(eff, egoX, egoXaltX, interaction1 = sprintf("dem_depend%s" , set), name = sprintf("pta_depend%s" , set))}
 
 
     #predicting democracry
@@ -37,8 +37,7 @@ split_estimation <- function(set = c("1", "2"), filename){
             #trade
             eff <- includeEffects(eff, X, interaction1 = paste0("trade_log", set), name = sprintf("pta_depend%s" , set))
             # gdp
-            eff <- includeEffects(eff, egoX, interaction1 = paste0("gdp_log", set), name = sprintf("pta_depend%s" , set))
-            if(set == "2") {eff <- includeEffects(eff, egoXaltX, interaction1 = paste0("gdp_log", set), name = sprintf("pta_depend%s" , set))}
+            if(set == "2") {eff <- includeEffects(eff, egoX, egoXaltX, interaction1 = paste0("gdp_log", set), name = sprintf("pta_depend%s" , set))}
 
         # on democracy
             eff <- includeEffects(eff, effFrom, interaction1 = paste0("gdp_log", set), name = sprintf("dem_depend%s" , set))
