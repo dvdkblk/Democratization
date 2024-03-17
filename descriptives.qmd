@@ -1,0 +1,212 @@
+---
+title: "Descriptives"
+format: html
+editor: visual
+---
+
+
+```{r setup}
+library(tidyverse)
+library(ggridges)
+library(ggraph)
+library(flextable)
+library(tidygraph)
+library(igraph)
+
+set_flextable_defaults(font.family = "Arial", font.size = "11", digits = 2)
+```
+
+## Min/max year
+```{r}
+min_year <- 2005
+max_year <- 2022
+```
+
+# Democracy
+```{r}
+load("data/raw/dem_raw.Rdata")
+dem <- dem %>% 
+  filter(year >= min_year, year <= max_year)%>% 
+  mutate(poly_ord = round(v2x_polyarchy, 1)*10)
+
+country_list <- sort(unique(dem$country_id))
+
+
+a <- dem %>% 
+  ggplot(aes(x = year, v2x_polyarchy, group = year))+
+  geom_boxplot()+
+  theme_light()+
+  labs(x = "Year", y = "V-Dem Polyarchy Index")
+
+b <- dem %>% 
+  count(year, poly_ord) %>% 
+  mutate(share = n/sum(n), .by=year) %>% 
+  mutate(year = ymd(paste0(year, "0101")), 
+         poly_ord = fct_rev(as.factor(poly_ord)), 
+         display = year %in% c(ymd("20050101"), ymd("20220101"))) %>% 
+  ggplot(aes(x = year, y = share, fill = poly_ord))+
+  geom_area()+
+  geom_text(aes(label = ifelse(display, scales::percent(share, 1), NA), 
+                x = if_else(year > ymd("20140101"), year - months(5), year + months(5))), 
+                position = position_stack(.5))+
+  scale_fill_brewer(palette = "RdYlGn", direction = -1)+
+  scale_y_continuous(labels = scales::percent_format(), expand = expansion(c(0.02,0)))+
+  labs(x = "Year" , fill = "", y = "Share of countries")+
+  theme_light()
+  
+patchwork::wrap_plots(a,b)
+
+dem %>% 
+  mutate(move = case_when(lag(poly_ord) > poly_ord ~ "down", 
+                          lag(poly_ord) < poly_ord ~ "up", 
+                          .default = "none"), .by = country_id) %>% 
+  count(year, move) %>% 
+  filter(move != "none") %>% 
+  mutate(value = ifelse(move == "down", n*-1, n), 
+         year = ymd(paste0(year, "0101"))) %>% 
+  ggplot()+
+  geom_col(aes(x = year, y = value, fill = move))+
+  scale_fill_manual(values = c("#E41A1C", "#4DAF4A"))+
+  scale_x_date(date_breaks = "3 years", date_labels = "%Y", date_minor_breaks = "1 year")+
+  scale_y_continuous(limits = c(-25, 25), breaks = seq(from = -20, to = 20, by= 10), labels = abs(seq(from = -20, to = 20, by= 10)))+
+  theme_light()+
+  labs(y = "Number of countries", x = "Year", fill = "Change in Polyarchy")
+  
+
+```
+
+
+# PTAs
+```{r}
+load(file = "data/raw/pta_raw.Rdata")
+load(file = "data/raw/withdraw_raw.Rdata")
+
+
+pta <- pta %>% filter(id1 %in% country_list, id2 %in% country_list)
+
+pta_list <- map(min_year:max_year, function(y){
+  draw <- withdraw %>% 
+    filter(year <= y) %>% 
+    select(id1, id2, base_treaty)
+  
+  subset <- pta %>% 
+    filter(year <= y) %>% 
+    select(id1, id2, base_treaty)
+  
+  # disregard the edge, if any of the two parties withdrew from the treaty in the the given or a previous year
+  if(nrow(draw) > 0){
+    subset <- subset %>% 
+      rowwise() %>% 
+      filter(max((draw$id1 == id1 | draw$id2 == id1) + 
+                   (draw$id1 == id2 | draw$id2 == id2) + 
+                   (draw$base_treaty == base_treaty)) < 3 | (nrow(draw) == 0)) %>% 
+      ungroup()
+  }
+  
+  graph <- subset %>% 
+    select(id1, id2) %>%
+    graph_from_data_frame(directed = F, vertices = country_list) %>%
+    # to avoid multiple connections between countries
+    simplify() 
+  return(graph)
+}, .progress = TRUE) 
+
+pta_list[[1]] %>% degree() %>% as_tibble() %>% count(value)
+
+map_dfr(pta_list, \(x) x %>% degree %>% as_tibble, .id = "year") %>% mutate(year = as.numeric(year)+2004) %>% 
+  filter(year %in% c(2005, 2009, 2014, 2018, 2022)) %>% 
+  mutate(year = fct_rev(as.factor(year))) %>% 
+  ggplot(aes(x = value, y = (year), fill = (year)))+
+  geom_density_ridges(alpha = .7, color = "black", stat = "binline", bins = 20)+
+  labs(x = "Count of PTAs per country", y = NULL)+
+  theme(legend.position = "none")+
+  scale_y_discrete(expand = expansion(c(.005,.5)))+
+  theme_light()+
+    theme(legend.position = 'none')
+  
+change <- read_csv2("data/network_changes.csv") %>% janitor::clean_names()
+
+change %>% 
+  rename(creation = x0_1, 
+         dissolution = x1_0) %>% 
+  mutate(year = 2006:2022) %>% 
+  pivot_longer(creation:dissolution) %>% 
+  ggplot()+
+  geom_col(aes(fill = name, y = value, x = year), position = position_dodge())+
+    scale_fill_manual(values = c( "#4DAF4A", "#E41A1C"))+
+  theme_light()+
+  labs(x = "Year", y = "Number of tie changes", fill = "Type of change")+
+  scale_y_continuous(expand = expansion(c(0.01, .05)))+
+  scale_x_continuous(breaks = seq(2006, 2022, by = 2), minor_breaks = seq(2005, 2022, by = 1))
+
+
+
+
+a <- ggraph(pta_list[[1]]%>% tidygraph::as_tbl_graph() %>% 
+  activate(nodes) %>% 
+  filter(!node_is_isolated()))+
+  geom_edge_link(alpha = .5, color = "black")+
+  geom_node_point(color = "blue")+
+  labs(title = "2008", caption = "7 isolated nodes excluded")
+
+b <- ggraph(pta_list[[18]]%>% tidygraph::as_tbl_graph() %>% 
+  activate(nodes) %>% 
+  filter(!node_is_isolated()))+
+  geom_edge_link(alpha = .5, color = "black")+
+  geom_node_point(color = "blue")+
+  labs(title = "2022", caption = "3 isolated nodes excluded" )
+
+
+map_dfr(pta_list, \(n){
+  t <-  distance_table(n)
+  tibble(counts = t$res) %>% 
+    mutate(distance = row_number()) 
+                    }, .id = "year") %>% 
+  mutate(year = factor(as.integer(year)+2004)) %>% 
+    filter(year %in% c(2005, 2012, 2016, 2022)) %>% 
+  ggplot()+
+  geom_line(aes(distance, counts, color = year))+
+  theme_light()+
+  scale_color_brewer(type = "qual",palette = 2)+
+  labs(y = "Frequency", x = "Shortest path length", color = "Year")
+
+patchwork::wrap_plots(a, b)
+
+
+map_dfr(pta_list, \(n){
+  avg_dist <- mean_distance(n)
+  density <- edge_density(n)
+  centr <- centr_degree(n)$centralization
+  cent_betw <- centr_betw(n,directed = F,normalized = T)$centralization
+  clust <- transitivity(n, type = "undirected")
+  modularity <- modularity(n, cluster_fast_greedy(n)$membership)
+  tibble(avg_dist, density, centr, cent_betw, clust, modularity)
+                    }, .id = "Year") %>% 
+  mutate(Year = as.character(as.integer(Year)+2004)) %>% 
+  flextable() %>% 
+  colformat_double() %>% 
+  colformat_double(j = 5, digits = 3) %>% 
+  print(preview = "docx")
+
+
+map_dfr(list(sample_gnm(179, 6294, directed = F)), \(n){
+  avg_dist <- mean_distance(n)
+  density <- edge_density(n)
+  centr <- centr_degree(n)$centralization
+  cent_betw <- centr_betw(n,directed = F,normalized = T)$centralization
+  clust <- transitivity(n, type = "undirected")
+    modularity <- modularity(n, cluster_fast_greedy(n)$membership)
+  tibble(avg_dist, density, centr, cent_betw, clust, modularity)
+                    }) %>% 
+  flextable() %>% 
+  colformat_double() %>% 
+  colformat_double(j = 4, digits = 3) %>% 
+  print(preview = "docx")
+  
+map_dbl(1:1000, \(x)
+    return(sample_gnm(179, 6294, directed = F) %>% transitivity(type = "undirected"))
+    ) %>% mean
+
+
+```
+
