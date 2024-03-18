@@ -36,16 +36,18 @@ split_estimation <- function(set = c("1", "2"), filename){
             eff <- includeEffects(eff, X, interaction1 = sprintf("ally_covar%s" , set), name = sprintf("pta_depend%s" , set))
             #trade
             eff <- includeEffects(eff, X, interaction1 = paste0("trade_log", set), name = sprintf("pta_depend%s" , set))
+            #tradeshare
+            eff <- includeInteraction(eff, X, egoX, interaction1=c(paste0("trade_mil", set), paste0("gdp_inv", set)), name = sprintf("pta_depend%s" , set))
             # gdp
             if(set == "2") {eff <- includeEffects(eff, egoX, egoXaltX, interaction1 = paste0("gdp_log", set), name = sprintf("pta_depend%s" , set))}
 
         # on democracy
             eff <- includeEffects(eff, effFrom, interaction1 = paste0("gdp_log", set), name = sprintf("dem_depend%s" , set))
     
-    alg <- sienaAlgorithmCreate(projname = "full_model", modelType = setNames(c(3),paste0("pta_depend", set)), nsub = 1, n3 = 3000, n2start = 250)
+    alg <- sienaAlgorithmCreate(projname = "full_model", modelType = setNames(c(3), paste0("pta_depend", set)), nsub = 1, n3 = 3000, n2start = 250)
     
-    assign(paste0("ans", set), siena07(alg, data = data, effects = eff, prevAns = get(paste0("ans", set)), nbrNodes = 7, useCluster = TRUE, returnDeps = TRUE))
-    
+    assign(paste0("ans", set), siena07(alg, data = data, effects = eff, prevAns = get(paste0("ans", set)), nbrNodes = 3, useCluster = TRUE, returnDeps = TRUE))
+
     print(get(paste0("ans", set)))
 
     save(list = paste0("ans", set), file = sprintf("results/set%s/new.RData", set))
