@@ -4,7 +4,6 @@ format: html
 editor: visual
 ---
 
-
 ```{r setup}
 library(tidyverse)
 library(ggridges)
@@ -17,12 +16,14 @@ set_flextable_defaults(font.family = "Arial", font.size = "11", digits = 2)
 ```
 
 ## Min/max year
+
 ```{r}
 min_year <- 2005
 max_year <- 2022
 ```
 
 # Democracy
+
 ```{r}
 load("data/raw/dem_raw.Rdata")
 dem <- dem %>% 
@@ -75,8 +76,8 @@ dem %>%
 
 ```
 
-
 # PTAs
+
 ```{r}
 load(file = "data/raw/pta_raw.Rdata")
 load(file = "data/raw/withdraw_raw.Rdata")
@@ -210,7 +211,8 @@ map_dbl(1:1000, \(x)
 
 ```
 
-# pta <-> dem
+# pta \<-\> dem
+
 ```{r}
 pta_dem <- map_dfr(1:18, \(n){
   pta_list[[n]] %>% degree %>% enframe()
@@ -231,4 +233,3 @@ pta_dem %>%
   labs(x = "Year", y = "Pearson's r")+
   theme_light()
 ```
-

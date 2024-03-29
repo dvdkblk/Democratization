@@ -44,7 +44,14 @@ eff <- includeEffects(eff, gwesp, name = "pta_depend")
 eff <- includeEffects(eff, inPopSqrt, name = "pta_depend")
 ```
 
-## controll variables
+# Estimate
+```{r}
+mod <- sienaAlgorithmCreate(projname = "first_algo", modelType = c(pta_depend=3))
+
+first <- siena07(mod, data = siena_data, effects = eff, useCluster = T)
+```
+
+## control variables
 ```{r}
 # trade volume
 eff <- includeEffects(eff, X, interaction1 = "trade_covar", name = "pta_depend")
@@ -55,17 +62,10 @@ eff <- includeEffects(eff, effFrom, interaction1 = "gdp_covar", name = "dem_depe
 
 # interaction gdp trade
 eff <- includeInteraction(eff, X, altX, interaction1=c("trade_covar", "gdp_covar"))
-
+# 
 # distance
 eff <- includeEffects(eff, X, interaction1 = "dist_covar", name = "pta_depend")
-
+# 
 # alliance
 eff <- includeEffects(eff, X, interaction1 = "dist_covar", name = "pta_depend")
 ```
-# Estimate
-```{r}
-mod <- sienaAlgorithmCreate(projname = "first_algo", modelType = c(pta_depend=3))
-
-first <- siena07(mod, data = siena_data, effects = eff, useCluster = T)
-```
-

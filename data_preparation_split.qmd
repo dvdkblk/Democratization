@@ -15,19 +15,17 @@ library(Matrix)
 ```
 
 ## Min/max year
+
 ```{r}
 min_year <- 2005
 mid_year <- 2014
 max_year <- 2022
 ```
 
-
-
-#Data preparation 
-
-
+#Data preparation
 
 ## Democracy
+
 ```{r}
 load(file = "data/raw/dem_raw.Rdata")
 
@@ -55,8 +53,8 @@ dem_depend2 <- dem_depend[,as.character(mid_year:max_year)] %>%
                 sienaDependent(type = "behavior", sparse = F)
 ```
 
-
 ## pta network
+
 ```{r}
 
 load("data/raw/pta_raw.Rdata")
@@ -108,9 +106,8 @@ pta_depend2 <- sienaDependent(pta_list[10:18], allowOnly = FALSE, sparse = T)
 
 ```
 
-
-
 ## Alliances
+
 ```{r}
 load("data/raw/ally.Rdata")
 
@@ -156,6 +153,7 @@ ally_covar2 <- varDyadCovar(ally_list[10:17], warn = FALSE)
 ```
 
 ## Distance
+
 ```{r}
 load("data/raw/dist.Rdata")
 dist <- dist %>% 
@@ -186,6 +184,7 @@ dist_covar <- coDyadCovar(dist_m/1000, sparse = F)
 ```
 
 ## GDP
+
 ```{r}
 load("data/raw/gdp.Rdata")
 gdp <- gdp %>% 
@@ -223,6 +222,7 @@ gdp_log2 <- gdp_log[,10:17] %>% varCovar()
 ```
 
 ## Trade
+
 ```{r}
 load("data/raw/trade.Rdata")
 trade <- trade %>% 
@@ -274,8 +274,8 @@ trade_mil2 <- varDyadCovar(trade_list[10:17], warn = F)
 
 ```
 
-
 ## Combine
+
 ```{r}
 siena_data1 <- sienaDataCreate(pta_depend1, dem_depend1, ally_covar1, trade_log1, trade_mil1, dist_covar, gdp_inv1, gdp_bil1, gdp_log1)
 siena_data2 <- sienaDataCreate(pta_depend2, dem_depend2, ally_covar2, trade_log2, trade_mil2, dist_covar, gdp_inv2, gdp_bil2, gdp_log2)
@@ -285,19 +285,6 @@ save(siena_data1, file = "data/proc/siena_data1.Rdata")
 save(siena_data2, file = "data/proc/siena_data2.Rdata")
 ```
 
+# to do
 
-
-
-# to do  
-consider what type of treaties we're looking at
-what types of alliances we consider
-which democracy index?
-what to do about the 8 countries that are not in gravity but in vdem?
-RateX effect set for missing values (manual p.32f), or not (zandberg 2018)
-Questions:
- - allies -> isn't that a new network in itself? directed/not directed? nonaggression agreements?
- - distance -> as time varrying?
-- continuous vs ordinal democracy
-- log gdp? 
-- log trade!
-- deflate to stable dollars -> already done by datasource
+consider what type of treaties we're looking at what types of alliances we consider which democracy index? what to do about the 8 countries that are not in gravity but in vdem? RateX effect set for missing values (manual p.32f), or not (zandberg 2018) Questions: - allies -\> isn't that a new network in itself? directed/not directed? nonaggression agreements? - distance -\> as time varrying? - continuous vs ordinal democracy - log gdp? - log trade! - deflate to stable dollars -\> already done by datasource

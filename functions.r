@@ -45,3 +45,16 @@ GeodesicDistribution <- function (i, data, sims, period, groupName,
   names(gdi) <- as.character(levls)
   gdi
 }
+
+create_table <- function(answer, set){
+  depend <- answer$requestedEffects$name
+  effect_names <- answer$requestedEffects$effectName
+  theta <- answer$theta
+  se <- answer$se
+  p <- round(pnorm(abs(theta/se), lower.tail = FALSE), 3)
+  
+  table <- tibble::tibble(set = set, depend, effect_names, theta, se, p) %>% 
+    filter(!str_detect(effect_names, "period")) %>% 
+    mutate(across(c(depend, effect_names), \(s) str_remove_all(s, paste0("(?<=[:alpha:])", set))))
+  return(table)
+}
